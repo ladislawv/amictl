@@ -1,0 +1,4 @@
+# the station address and token: never in git
+station.local
+__pycache__/
+*.pyc
