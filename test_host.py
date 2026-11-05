@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Tests amictld (host build) and the amictl client on this PC, before
-anything reaches the A1200 (plan section 10.1, step 1).
+anything reaches the A1200 (README.md).
   usage: test_host.py SERVER-BINARY
 Starts the server in a temporary root, runs every command through the
 client, checks the answers, and stops it. Exit status 0 when all pass.

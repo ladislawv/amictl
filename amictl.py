@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""amictl: client of the remote test station (plan section 10.1).
+"""amictl: client of the remote test station (README.md).
 
 Talks to amictld on the A1200. The station address and token come from
-tools/amictl/station.local (JSON: {"host": ..., "port": ..., "token": ...},
-not in git) or from AMICTL_HOST / AMICTL_PORT / AMICTL_TOKEN.
+station.local next to this script (JSON: {"host": ..., "port": ..., "token": ...},
+not in git), or the file AMICTL_STATION names, or AMICTL_HOST / AMICTL_PORT /
+AMICTL_TOKEN. runpkg's results go to the project's tests/a1200/results/ when
+this is a project's tools/amictl (a git submodule), else to ./results/;
+AMICTL_RESULTS names another directory.
 
   amictl hello | info
   amictl put LOCAL REMOTE          amictl put -r LOCALDIR REMOTEDIR
@@ -20,7 +23,7 @@ not in git) or from AMICTL_HOST / AMICTL_PORT / AMICTL_TOKEN.
                                    --shots: a screenshot every SECONDS meanwhile
   amictl gentoken FILE             write a new random token
 
-Input (port 6801, plan section 10.1.1; raw keys assume the usa keymap):
+Input (port 6801, README.md; raw keys assume the usa keymap):
   amictl key KEY...                press and release each: a name (return, esc,
                                    f1, lamiga+w, ctrl+c, ...) or 0xNN
   amictl type TEXT                 type the text
@@ -29,7 +32,7 @@ Input (port 6801, plan section 10.1.1; raw keys assume the usa keymap):
   amictl trace [SECONDS]           print every input event the Amiga sees (default 10 s)
   The mouse and keyboard of the PC: tools/amictl/amikvm.ps1 (Windows).
 
-MIT licence (tools/amictl/LICENSE).
+MIT licence (LICENSE).
 """
 import datetime, json, os, re, secrets, socket, struct, sys, time, zlib
 
@@ -43,6 +46,17 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(os.path.dirname(HERE))
 
 
+def results_dir():
+    """Where runpkg (and deqp_watch.py) put a run's results: AMICTL_RESULTS,
+    else the project's tests/a1200/results/ (this file in <project>/tools/
+    amictl), else ./results/."""
+    if os.environ.get("AMICTL_RESULTS"):
+        return os.environ["AMICTL_RESULTS"]
+    if os.path.basename(os.path.dirname(HERE)) == "tools" and os.path.isdir(os.path.join(REPO, "tests", "a1200")):
+        return os.path.join(REPO, "tests", "a1200", "results")
+    return os.path.join(os.getcwd(), "results")
+
+
 class StationError(Exception):
     def __init__(self, status, what):
         super().__init__("%s: %s" % (what, STATUS.get(status, "status %d" % status)))
@@ -51,17 +65,17 @@ class StationError(Exception):
 
 def config():
     cfg = {"host": None, "port": 6800, "token": None}
-    p = os.path.join(HERE, "station.local")
+    p = os.environ.get("AMICTL_STATION", os.path.join(HERE, "station.local"))
     if os.path.exists(p):
         cfg.update(json.load(open(p)))
     cfg["host"] = os.environ.get("AMICTL_HOST", cfg["host"])
     cfg["port"] = int(os.environ.get("AMICTL_PORT", cfg["port"]))
     cfg["token"] = os.environ.get("AMICTL_TOKEN", cfg["token"])
     if not cfg["host"]:
-        sys.exit("amictl: no station address (tools/amictl/station.local, see "
+        sys.exit("amictl: no station address (station.local, see "
                  "station.local.example, or AMICTL_HOST)")
     if not cfg["token"]:
-        sys.exit("amictl: no token (tools/amictl/station.local or AMICTL_TOKEN)")
+        sys.exit("amictl: no token (station.local or AMICTL_TOKEN)")
     return cfg
 
 
@@ -250,7 +264,8 @@ def run_with_shots(st, command, directory, timeout, every, shotdir):
 
 
 def runpkg(st, pkgdir, timeout, shots=0, script_args=""):
-    """Upload a package (tests/a1200/<name>/ built into tests/a1200/out/ogles2-<name>/),
+    """Upload a package (a directory with one Run-* AmigaDOS script: a project's
+    tests/a1200/out/<package>/),
     run its Run-* script, fetch results/ into tests/a1200/results/<package>-<time>/.
     With shots, a screenshot about every `shots` seconds goes into shots/ there.
     script_args (KEY=VALUE words) go to the script's .key line; a value may hold
@@ -277,7 +292,7 @@ def runpkg(st, pkgdir, timeout, shots=0, script_args=""):
     # package's (M1 runs 2 and 3 ran run 1's library this way): expunge every
     # library nobody has open.
     st.run("Avail FLUSH >NIL:", "", 60)
-    dest = os.path.join(REPO, "tests", "a1200", "results",
+    dest = os.path.join(results_dir(),
                         "%s-%s" % (name, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
     t0 = time.time()
     if shots:

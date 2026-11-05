@@ -13,11 +13,16 @@ ogles3), each of which includes it as a git submodule at `tools/amictl`:
 git submodule add https://github.com/ladislawv/amictl.git tools/amictl
 ```
 
-Paths in the code assume that place: `amictl.py` takes the project's root as
-two directories up (packages from `tests/a1200/out/`, results into
-`tests/a1200/results/`). A project's own tools that talk to the Amiga (its
+There, `runpkg` and `deqp_watch.py` put results into the project's
+`tests/a1200/results/`. A project's own tools that talk to the Amiga (its
 shader compile bridge, for example) stay in that project and import
 `tools/amictl/amictl.py`.
+
+It also works on its own, from a checkout such as `C:\- CPPmictl`
+(`PROMPT.md`: what to tell a Claude session in another project): results then
+go to `./results/`. `AMICTL_RESULTS` names another results directory,
+`AMICTL_STATION` another settings file; `AMICTL_HOST`, `AMICTL_PORT` and
+`AMICTL_TOKEN` override them.
 
 ## Files
 
@@ -29,6 +34,8 @@ shader compile bridge, for example) stay in that project and import
 | `test_host.py` | the protocol tested against the server built for the PC (no Amiga needed) |
 | `server/` | `amictld`: the protocol (`amictl_proto.h`, version 1.4), the server, its OS layers for AmigaOS (`os_amiga.c`) and POSIX (`os_posix.c`) |
 | `station.local.example` | the PC's settings: the Amiga's address, the token, the PCs allowed |
+| `build.sh`, `amiga/` | the server and its install directory (`out/amictld/`, `.lha`) built on their own; `bash build.sh test`: the host test |
+| `PROMPT.md` | for a Claude session in another project: how to test on the Amiga through this |
 
 ## Setup
 
@@ -36,9 +43,11 @@ shader compile bridge, for example) stay in that project and import
    fill it in; a new token: `python3 tools/amictl/amictl.py gentoken /dev/stdout`.
    `station.local` holds the token: it is in `.gitignore`, never commit it or
    paste it anywhere.
-2. Build the server (the project's Makefile: `server/amictld.c` and
-   `server/os_amiga.c` with m68k-amigaos-gcc) and install it on the Amiga with
-   its token and allow list (the project's `amictld` package).
+2. Build the server and its install directory with `bash build.sh` (or the
+   project's Makefile and `amictld` package: the same sources and flags), copy
+   `out/amictld/` to the Amiga and follow its `ReadMe.txt` (a line in
+   `S:User-Startup`, then `Execute Start-amictld`). A newer server later:
+   upload it over the old binary and `amictl restart` with its path.
 3. `python3 tools/amictl/amictl.py hello`.
 
 The server accepts only the addresses in its allow list, and only after a

@@ -1,5 +1,5 @@
 /*
- * amictl protocol, version 1 (plan section 10.1). TCP, one client at a time,
+ * amictl protocol, version 1 (README.md). TCP, one client at a time,
  * all numbers big-endian.
  *
  * Request:  "AMC1" | u32 command | u32 arg length | u32 data length | arg | data
@@ -7,7 +7,7 @@
  *
  * The argument is text; several fields are separated by '\n'. The first
  * request on a connection must be HELLO with the token.
- * MIT licence (tools/amictl/LICENSE).
+ * MIT licence (LICENSE).
  */
 #ifndef AMICTL_PROTO_H
 #define AMICTL_PROTO_H
@@ -41,7 +41,7 @@ enum amictl_cmd {
     AMC_QUIT = 17,    /* reply, then the server exits */
     AMC_GETFROM = 18  /* 1.4: arg: path \n offset \n max bytes -> u32 file size, then the file's
                          bytes from offset (at most max, at most AMICTL_MAX_OUT): a log read
-                         as it grows (tools/amictl/deqp_watch.py) */
+                         as it grows (deqp_watch.py) */
 };
 
 enum amictl_status {
@@ -58,7 +58,7 @@ enum amictl_status {
 };
 
 /*
- * Input channel (plan section 10.1.1): a second port, served by its own
+ * Input channel (README.md): a second port, served by its own
  * process ("amictld INPUT", started by the server), so that input never waits
  * behind a command on AMICTL_PORT. One client at a time.
  *

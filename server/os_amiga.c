@@ -1,5 +1,5 @@
 /*
- * amictld's OS layer for AmigaOS 3.x (plan section 10.1): bsdsocket.library
+ * amictld's OS layer for AmigaOS 3.x (README.md): bsdsocket.library
  * (Roadshow; AmiTCP and Miami offer the same API), dos.library for files and
  * jobs, cybergraphics.library for screenshots. GCC 6 + libnix.
  *

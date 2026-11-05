@@ -151,7 +151,7 @@ def main(argv):
     print("uploading %s -> %s: %d files" % (pkgdir, remote, amictl.put_tree(st, pkgdir, remote)), flush=True)
     st.run('Delete "%s" ALL QUIET FORCE >NIL:' % amictl.join(remote, "results"), "", 60)
     st.run("Avail FLUSH >NIL:", "", 60)
-    dest = os.path.join(amictl.REPO, "tests", "a1200", "results",
+    dest = os.path.join(amictl.results_dir(),
                         "%s-%s" % (name, datetime.datetime.now().strftime("%Y%m%d-%H%M%S")))
     os.makedirs(os.path.join(dest, "results"), exist_ok=True)
     live_progress = open(os.path.join(dest, "results", "live-progress.txt"), "ab")

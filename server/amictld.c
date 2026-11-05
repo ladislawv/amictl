@@ -1,5 +1,5 @@
 /*
- * amictld: the remote test station's server (plan section 10.1).
+ * amictld: the remote test station's server (README.md).
  * Portable core: protocol, authentication, address check, logging, command
  * dispatch, job table. The OS layer is os_amiga.c or os_posix.c.
  *
@@ -9,7 +9,7 @@
  *   amictld.log     every connection and command
  *   amictld.starts  start counter (shows that a reboot happened)
  *
- * MIT licence (tools/amictl/LICENSE).
+ * MIT licence (LICENSE).
  */
 #include <stdarg.h>
 #include <stdio.h>
@@ -447,7 +447,7 @@ static void serve(int s, unsigned long ip)
     buf_free(&out);
 }
 
-/* ---- input channel (plan section 10.1.1) ---- */
+/* ---- input channel (README.md) ---- */
 
 /* input.device qualifiers and button codes (devices/inputevent.h) */
 #define Q_LSHIFT 0x0001

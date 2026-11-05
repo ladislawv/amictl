@@ -1,5 +1,5 @@
 <#
-amikvm: the PC's mouse and keyboard drive the A1200 (plan section 10.1.1).
+amikvm: the PC's mouse and keyboard drive the A1200 (README.md).
 
 The Amiga is a screen beside the PC's: push the pointer past the PC's right
 edge (or left, "edge" in station.local) and it appears on the Amiga screen;
@@ -8,14 +8,14 @@ keyboard follows the pointer. Scroll Lock always returns to the PC.
 
   powershell -ExecutionPolicy Bypass -File tools\amictl\amikvm.ps1
 
-Settings: tools/amictl/station.local (host, port, token), optionally
+Settings: station.local next to it (host, port, token), optionally
   "kvm": {"edge": "right", "scale": 1.0, "hotkey": "ScrollLock", "mode": "pointer"}
 -Trace FILE writes every record sent and received to FILE.
 Mode "pointer" places the Amiga pointer 1:1 (Workbench, most programs);
 "raw" sends relative mouse events, which the Amiga accelerates, for games
 that read mouse movement (Quake III's mouselook).
 Needs amictld 1.3 (its input channel, port 6801). Windows PowerShell 5.1,
-nothing to install. Ctrl-C ends it. MIT licence (tools/amictl/LICENSE).
+nothing to install. Ctrl-C ends it. MIT licence (LICENSE).
 #>
 param([string]$Edge = "", [double]$Scale = 0, [string]$Hotkey = "", [string]$Mode = "", [string]$Trace = "")
 
