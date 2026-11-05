@@ -156,6 +156,11 @@ int os_accept(int ls, unsigned long *ip)
     tv.tv_sec = 30;
     tv.tv_usec = 0;
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    /* Likewise a receive: a client whose request stops arriving (a large PUT
+     * over Wi-Fi that stalled, 2026-11-05) or that stays silent between
+     * requests for 2 minutes is dropped; the server was held until a reset. */
+    tv.tv_sec = 120;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
     return s;
 }
 

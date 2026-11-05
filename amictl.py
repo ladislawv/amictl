@@ -17,6 +17,8 @@ AMICTL_RESULTS names another directory.
   amictl shot OUT.png [SCREEN-TITLE-PART]
   amictl getenv NAME | setenv NAME VALUE | unsetenv NAME
   amictl up [SECONDS]              wait until the station answers (after a reboot)
+  Exit status 4 (one "STATION DOWN" line): the station did not answer within
+  15 s or a transfer stalled; scripts should stop there, not go on.
   amictl reboot | restart NEWBINARY | quit
   amictl runpkg PACKAGEDIR [-t SECONDS] [--shots SECONDS] [-a "KEY=VALUE ..."]
                                    upload, run its Run-* script, fetch results/;
@@ -34,7 +36,7 @@ Input (port 6801, README.md; raw keys assume the usa keymap):
 
 MIT licence (LICENSE).
 """
-import datetime, json, os, re, secrets, socket, struct, sys, time, zlib
+import datetime, hashlib, json, os, re, secrets, socket, struct, sys, time, zlib
 
 MAGIC = b"AMC1"
 CMD = {"HELLO": 1, "INFO": 2, "PUT": 3, "GET": 4, "LIST": 5, "DELETE": 6, "MAKEDIR": 7,
@@ -83,8 +85,12 @@ class Station:
     def __init__(self, host=None, port=None, token=None, timeout=30):
         cfg = config() if token is None else {"host": host, "port": port, "token": token}
         self.addr = (host or cfg["host"], port or cfg["port"])
-        self.sock = socket.create_connection(self.addr, timeout=timeout)
-        self.hello_text = self.call("HELLO", cfg["token"]).decode("latin-1")
+        # A server that answers, answers HELLO at once: 15 s means it is busy
+        # with a stalled client or hung, and the caller learns it now, not
+        # after each command's own timeout (exit status 4, main).
+        self.sock = socket.create_connection(self.addr, timeout=min(timeout, 15))
+        self.hello_text = self.call("HELLO", cfg["token"], timeout=15).decode("latin-1")
+        self.sock.settimeout(timeout)
 
     def close(self):
         self.sock.close()
@@ -121,7 +127,9 @@ class Station:
         return self.call("INFO").decode("latin-1")
 
     def put(self, remote, data):
-        self.call("PUT", remote, data, timeout=300)
+        # the reply comes once all of it arrived: a minute plus 16 KB/s
+        # (the Pi 3 card's Wi-Fi is slow)
+        self.call("PUT", remote, data, timeout=60 + len(data) / 16384)
 
     def get(self, remote):
         return self.call("GET", remote, timeout=300)
@@ -150,10 +158,26 @@ class Station:
         done, rc = struct.unpack(">Ii", body[:8])
         return bool(done), rc, body[8:]
 
-    def run(self, command, directory="", timeout=60, grace=10):
-        """Returns (rc, output, timed_out). On timeout the command gets Ctrl-C."""
+    def run(self, command, directory="", timeout=60, grace=10, step=0, heartbeat=None):
+        """Returns (rc, output, timed_out). On timeout the command gets Ctrl-C.
+        step: wait in WAITs of that many seconds (the server is free for other
+        clients between them, so a station that stops answering is noticed),
+        calling heartbeat(seconds so far) after each one that did not end it."""
         job = self.start(command, directory)
-        done, rc, out = self.wait(job, timeout)
+        if step:
+            t0 = time.time()
+            while True:
+                left = timeout - (time.time() - t0)
+                done, rc, out = self.wait(job, max(1, min(step, left)))
+                if done:
+                    return rc, out, False
+                if time.time() - t0 >= timeout:
+                    break
+                if heartbeat:
+                    heartbeat(time.time() - t0)
+            done = False
+        else:
+            done, rc, out = self.wait(job, timeout)
         if done:
             return rc, out, False
         self.call("ABORT", str(job))
@@ -186,19 +210,56 @@ def write_png(path, w, h, rgb):
                 chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
 
 
-def put_tree(st, local, remote):
+def uploads_record():
+    """What this client uploaded where ({remote path: [size, sha1]}), so that
+    runpkg leaves out files the station has already: a file whose size there
+    and whose content here are those of its last upload. (The Pi 3 card's
+    Wi-Fi dropped during large uploads, 2026-11-05.)"""
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads.local")
+
+
+def put_tree(st, local, remote, skip_same=False, record=None):
+    """AMICTL_PUT_PAUSE=<ms>: a pause between files (a slow link)."""
+    pause = float(os.environ.get("AMICTL_PUT_PAUSE", "0")) / 1000.0
+    top = record is None
+    if top:
+        record = {}
+        if skip_same:
+            try:
+                record = json.load(open(uploads_record()))
+            except (OSError, ValueError):
+                record = {}
     try:
         st.call("MAKEDIR", remote)
     except StationError:
         pass
+    there = {}
+    if skip_same:
+        try:
+            there = {name: size for kind, size, name in st.listdir(remote) if kind == "F"}
+        except StationError:
+            there = {}
     n = 0
     for name in sorted(os.listdir(local)):
         lp = os.path.join(local, name)
+        rp = join(remote, name)
         if os.path.isdir(lp):
-            n += put_tree(st, lp, join(remote, name))
-        else:
-            st.put(join(remote, name), open(lp, "rb").read())
-            n += 1
+            n += put_tree(st, lp, rp, skip_same, record)
+            continue
+        data = open(lp, "rb").read()
+        digest = hashlib.sha1(data).hexdigest()
+        if skip_same and there.get(name) == len(data) and record.get(rp) == [len(data), digest]:
+            continue
+        st.put(rp, data)
+        record[rp] = [len(data), digest]
+        n += 1
+        if pause:
+            time.sleep(pause)
+    if top and skip_same:
+        try:
+            json.dump(record, open(uploads_record(), "w"))
+        except OSError:
+            pass
     return n
 
 
@@ -285,7 +346,9 @@ def runpkg(st, pkgdir, timeout, shots=0, script_args=""):
     if ":" not in workdir:
         raise SystemExit("amictl: cannot find the server's work directory (CD said %r)" % out)
     remote = join(workdir, name)
-    print("uploading %s -> %s: %d files" % (pkgdir, remote, put_tree(st, pkgdir, remote)))
+    print("%s uploading %s -> %s" % (time.strftime("%H:%M:%S"), pkgdir, remote), flush=True)
+    print("%s uploaded: %d files (unchanged ones left out)" % (time.strftime("%H:%M:%S"),
+                                                             put_tree(st, pkgdir, remote, skip_same=True)), flush=True)
     # Results of an earlier run of the same package would mix with these.
     st.run('Delete "%s" ALL QUIET FORCE >NIL:' % join(remote, "results"), "", 60)
     # A library left in memory by an earlier run would be used instead of the
@@ -301,7 +364,17 @@ def runpkg(st, pkgdir, timeout, shots=0, script_args=""):
                                                shots, os.path.join(dest, "shots"))
         print("%d screenshots -> %s" % (n, os.path.join(dest, "shots")))
     else:
-        rc, out, timed_out = st.run(("Execute %s %s" % (scripts[0], script_args)).strip(), remote, timeout)
+        # In 15 s WAITs, a line a minute: a run that goes quiet is a station
+        # that stopped answering, not a long job (the one long RUN held the
+        # server and hid that, 2026-11-05)
+        last = [0]
+
+        def beat(s):
+            if s - last[0] >= 60:
+                last[0] = s
+                print("%s %s running, %d s" % (time.strftime("%H:%M:%S"), scripts[0], s), flush=True)
+        rc, out, timed_out = st.run(("Execute %s %s" % (scripts[0], script_args)).strip(), remote, timeout,
+                                    step=15, heartbeat=beat)
     print(out.decode("latin-1", "replace"), end="")
     print("%s: rc=%s%s, %.1f s" % (scripts[0], rc, " (TIMED OUT)" if timed_out else "",
                                    time.time() - t0))
@@ -490,6 +563,18 @@ def main(argv):
         return 0
     if cmd in ("key", "type", "click", "move", "pos", "trace"):
         return input_command(cmd, args)
+    try:
+        return station_command(cmd, args)
+    except (OSError, ConnectionError) as e:  # socket timeouts included
+        # One line and status 4, which scripts stop on, instead of a traceback
+        # and the next command's wait (2026-11-05: hours lost that way).
+        print("amictl: STATION DOWN: %s %s: %s (amictld busy with a stalled client or hung, or the "
+              "Amiga off the network)" % (cmd, " ".join(args[:1]), e.__class__.__name__ if not str(e) else e),
+              file=sys.stderr)
+        return 4
+
+
+def station_command(cmd, args):
     st = Station()
     try:
         if cmd == "hello":

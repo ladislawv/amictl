@@ -101,9 +101,10 @@ int os_accept(int ls, unsigned long *ip)
     socklen_t n = sizeof(a);
     int s = accept(ls, (struct sockaddr *)&a, &n);
     if (s >= 0) {
-        struct timeval tv = {30, 0}; /* as os_amiga.c */
+        struct timeval tv = {30, 0}, rv = {120, 0}; /* as os_amiga.c */
         *ip = ntohl(a.sin_addr.s_addr);
         setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &rv, sizeof(rv));
     }
     return s;
 }
